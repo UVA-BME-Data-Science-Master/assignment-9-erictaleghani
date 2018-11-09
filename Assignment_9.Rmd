@@ -1,0 +1,415 @@
+---
+title: "Assignment_9"
+author: "Eric Taleghani"
+date: "November 6, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Confounding Exercises
+
+1. The proportion of women accepted is 0.3033351
+```{r}
+library(devtools)
+#install_github("genomicsclass/dagdata")
+library(dagdata)
+data(admissions)
+
+#male proportion
+index = which(admissions$Gender==1)
+accepted= sum(admissions$Number[index] * admissions$Percent[index]/100)
+applied = sum(admissions$Number[index])
+accepted/applied
+
+#female proportion
+index = which(admissions$Gender==0)
+accepted= sum(admissions$Number[index] * admissions$Percent[index]/100)
+applied = sum(admissions$Number[index])
+accepted/applied
+
+```
+
+2. The p value is 9.139e-22
+```{r}
+atab<-as.data.frame(matrix(0,2,2))
+rownames(atab)<-c("Men","Women")
+colnames(atab)<-c("Accepted","Rejected")
+index = admissions$Gender==1
+men=admissions[index,]
+women=admissions[!index,]
+atab[1,1]= sum(men$Number * men$Percent/100)
+atab[1,2]= sum(men$Number*(1-men$Percent/100))
+windex = which(admissions$Gender==0)
+atab[2,1]= sum(women$Number * women$Percent/100)
+atab[2,2]= sum(women$Number * (1-women$Percent/100))
+atab
+chisq.test(atab)$p.value
+```
+
+3. The hardest major is F.
+4. The proportion accepted to the hardest major is 0.06477591
+```{r}
+major = admissions[1:6,1]
+men = admissions[1:6,]
+women =admissions[7:12,]
+H = (men$Number*men$Percent/100 + women$Number*women$Percent/100) / (men$Number+women$Number)
+H
+major[which.min(H)]
+min(H)
+```
+
+5. For men, the correlation between the number of applications across majors and H is 0.7647567
+```{r}
+cor(H,men$Number)
+```
+
+6. For women, the correlation between the number of applications across majors and H is -0.6743393
+```{r}
+cor(H,women$Number)
+```
+
+7. Option C: There is confounding between genders and preference for "hard" majors: females are more likely to apply to harder majors.
+
+
+##Gene Expression Data Exercises
+
+1. 
+```{r}
+library(devtools)
+#install_github("genomicsclass/GSE5859")
+library(Biobase)
+library(GSE5859)
+data(GSE5859)
+
+geneExpression = exprs(e)
+sampleInfo = pData(e)
+
+year = format(sampleInfo$date,"%y")
+length( unique(year) )
+
+table(year,sampleInfo$ethnicity)
+```
+
+2. There are two years in which more than one ethnicity is represented.
+```{r}
+tab=table(year,sampleInfo$ethnicity)
+print(tab)
+x=rowSums(tab!=0)
+sum(x>=2)
+```
+
+3. The proportion of values with more than one ethnicity represented is 0.04761905
+```{r}
+month.year = format(sampleInfo$date,"%m%y")
+tab=table(month.year,sampleInfo$ethnicity)
+print(tab)
+myx=rowSums(tab!=0)
+mean(myx>=2)
+```
+
+4. 4308 genes have a q-value less than 0.05
+5. The estimate of pi0 provided by qvalue is 0.3628642
+```{r}
+library(qvalue)
+library(genefilter)
+year = factor( format(sampleInfo$date,"%y") )
+index = which(year%in% c("02","03") & sampleInfo$ethnicity=="CEU")
+year = droplevels(year[index])
+pval = rowttests(geneExpression[ ,index], year)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.05)
+
+qval$pi0
+```
+
+6. 2463 genes have a q-value less than 0.05
+```{r}
+year = factor( format(sampleInfo$date,"%y") )
+index = which(year%in% c("03","04") & sampleInfo$ethnicity=="CEU")
+year = droplevels(year[index])
+pval = rowttests(geneExpression[ ,index], year)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.05)
+
+```
+
+7. 7217 genes have a q-value less than 0.05
+```{r}
+ethnicity = factor( sampleInfo$ethnicity)
+index = which(ethnicity%in% c("CEU","ASN"))
+ethnicity = droplevels(ethnicity[index])
+pval = rowttests(geneExpression[ ,index], ethnicity)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.05)
+```
+
+8. The number of gees with q-values less than 0.05 dropped to 560 when only analyzing the samples processed in 2005.
+```{r}
+ethnicity = factor( sampleInfo$ethnicity)
+year = factor( format(sampleInfo$date,"%y") )
+index = which(ethnicity%in% c("CEU","ASN") & year=="05")
+ethnicity = droplevels(ethnicity[index])
+pval = rowttests(geneExpression[ ,index], ethnicity)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.05)
+
+table(sampleInfo$ethnicity[index])
+
+```
+
+9. 3695 genes have q-values less tha 0.05.
+```{r}
+ethnicity = factor( sampleInfo$ethnicity)
+year = factor( format(sampleInfo$date,"%y") )
+indexASN = which(ethnicity%in% c("ASN") & year=="05")
+indexCEU = which(ethnicity%in% c("CEU") & year=="02")
+set.seed(3)
+indexCEU<-sample(indexCEU,3)
+index<-c(indexASN,indexCEU)
+ethnicity = droplevels(ethnicity[index])
+pval = rowttests(geneExpression[ ,index], ethnicity)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.05)
+```
+
+
+## Adjusting for Batch Effects with Linear Models Exercises
+
+1. 59 genes have q-values less than 0.1 
+```{r}
+#install_github("genomicsclass/GSE5859Subset")
+library(Biobase)
+library(GSE5859Subset)
+library(qvalue)
+library(genefilter)
+data(GSE5859Subset)
+
+sex = sampleInfo$group
+month = factor( format(sampleInfo$date,"%m"))
+table( sampleInfo$group, month)
+
+sex = factor(sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.1)
+```
+
+2. The proportion of genes on chrX or chrY is 0.3389831
+3. 8 of the genes are on chrY
+```{r}
+sex = factor( sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+qvals = qval$qvalues
+index = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+prop = mean(index)
+total = length(geneAnnotation$CHR)
+
+indexY = geneAnnotation$CHR[qvals<0.1]%in%c("chrY")
+table(indexY)["TRUE"]
+```
+
+4. The proportion with p values less than 0.05 is 0.8717949
+```{r}
+sex = factor( sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+qvals = qval$qvalues
+index = which(qvals<0.1 & !geneAnnotation$CHR%in%c("chrX","chrY"))
+month = factor( format(sampleInfo$date,"%m"))
+pval = rowttests(geneExpression[index,], month)$p.value
+mean(pval<0.05)
+```
+
+5. Option D creates the appropriate design matrix
+```{r}
+X = model.matrix(~sex+month)
+X
+```
+
+6. 17 q values are now less than 0.1
+```{r}
+X = model.matrix(~sex+month)
+i = 234
+y = geneExpression[i,]
+fit = lm(y~X-1)
+summary(fit)$coef
+
+pvals <- t( sapply(1:nrow(geneExpression),function(j){
+  y <- geneExpression[j,]
+  fit <- lm(y~X-1)
+  summary(fit)$coef[2,4]
+} ) )
+
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+
+```
+
+7. Now the proportion of genes on chrX or chrY is 0.8823529
+8. There are 15 genes on chr X or chrY
+```{r}
+index = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+prop = mean(index)
+prop
+table(index)["TRUE"]
+```
+
+9. there are 3170 q values from the month comparison less than 0.1
+```{r}
+X = model.matrix(~sex+month)
+pvals <- t( sapply(1:nrow(geneExpression),function(j){
+  y <- geneExpression[j,]
+  fit <- lm(y~X-1)
+  summary(fit)$coef[3,4] # third coef, for month
+} ) )
+library(qvalue)
+library(genefilter)
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+```
+
+
+##Factor Analaysis Exercises
+
+1. Option B
+
+2. Option C
+
+3. Option D: The fact that in the plot ordered by month we see two groups mainly driven by month, and within these we see subgroups driven by date, seems to suggest date more than month per se are the hidden factors.
+```{r}
+y = geneExpression - rowMeans(geneExpression)
+
+library(RColorBrewer)
+library(rafalib)
+mypar(1,2)
+n=ncol(y)
+cors=cor(y)
+cols=colorRampPalette(rev(brewer.pal(11,"RdBu")))(100)
+image(1:n,1:n,cors,xaxt="n",yaxt="n",col=cols,xlab="",ylab="",zlim=c(-1,1))
+o <- order(sampleInfo$date)
+yo<-y[,o]
+cors=cor(yo)
+cols=colorRampPalette(rev(brewer.pal(11,"RdBu")))(100)
+image(1:n,1:n,cors,xaxt="n",yaxt="n",col=cols,xlab="",ylab="",zlim=c(-1,1))
+
+```
+
+4. Option B gives you the estimates
+```{r}
+s <- svd(y)
+pcs <- s$v[,1:2] #gives first 2 PCs
+rownames(pcs)<-colnames(y)
+round(pcs,2)
+fit = s$u[,1:2]%*% (s$d[1:2]*t(pcs))
+var(as.vector(fit))/var(as.vector(y))
+```
+
+5. Option A: June 23 and June 27 are most different according to this factor
+```{r}
+month=format(sampleInfo$date, "%m")
+pcs = svd(y)$v[,1:2]
+o = order(sampleInfo$date)
+cols = as.numeric(month)[o]
+mypar(2,1)
+for(i in 1:2){
+  plot(pcs[o,i],col=cols,xaxt="n",xlab="")
+  label = gsub("2005-","",sampleInfo$date[o])
+  axis(1,1:ncol(y),label,las=2)
+}
+```
+
+6. 2 principle components explain more than 10% each of the variability
+```{r}
+s = svd(y)
+varexplained = s$d^2/ sum(s$d^2)
+plot(varexplained)
+sum(varexplained>0.10)
+```
+
+7. The first principle component correlates most with month
+8. This correlation is 0.8297915
+```{r}
+s = svd(y)
+month = factor( format(sampleInfo$date,"%m"))
+cors = cor( as.numeric(month),s$v)
+plot(t(cors))
+which.max(abs(cors))
+max(abs(cors))
+```
+
+9. The first principle component most correlates with sex
+10. This correlation is 0.6236858
+```{r}
+s = svd(y)
+sex = sampleInfo$group
+cors = cor( as.numeric(sex),s$v)
+plot(t(cors))
+which.max(abs(cors))
+max(abs(cors))
+```
+
+11. For the sex comparison, there are 14 q values less than 0.1
+12. The proportion is 1, indicating that they are all located on chrX or chrY
+```{r}
+X <- model.matrix(~sex+s$v[,1:2])
+
+library(limma)
+X <- model.matrix(~sex+s$v[,1:2])
+fit <- lmFit(y,X)
+k <- 2 ##second coef, for month
+ses <- fit$stdev.unscaled[,k]*fit$sigma
+ttest <- fit$coef[,k]/ses
+pvals <- 2*pt(-abs(ttest),fit$df)
+library(qvalue)
+library(genefilter)
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+index = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+mean(index)
+```
+
+
+##Surrogate Variable Analysis Exercises
+
+1. 13 genes have a q value less than 0.1
+```{r}
+library(sva)
+library(Biobase)
+
+s <- svd(geneExpression-rowMeans(geneExpression))
+cor(sampleInfo$group,s$v[,1])
+
+sex = sampleInfo$group
+mod = model.matrix(~sex)
+svafit = sva(geneExpression,mod)
+head(svafit$sv)
+
+for(i in 1:ncol(svafit$sv)){
+print( cor(s$v[,i],svafit$sv[,i]) )
+}
+
+
+svaX<-model.matrix(~sex+svafit$sv)
+library(limma)
+fit <- lmFit(geneExpression,svaX)
+k <- 2 #second coef, for sex
+ses <- fit$stdev.unscaled[,k]*fit$sigma
+ttest <- fit$coef[,k]/ses
+pvals <- 2*pt(-abs(ttest),fit$df)
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+```
+
+2. 12 of these genes are on chrX and chrY
+```{r}
+index = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+table(index)["TRUE"]
+```
